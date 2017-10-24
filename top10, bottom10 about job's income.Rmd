@@ -1,0 +1,115 @@
+install.packages("foreign")
+
+library(foreign)
+library(dplyr)
+library(ggplot2)
+library(readxl)
+
+raw_welfare <- read.spss(file = "koweps_hpc10_2015_beta1.sav",
+                         to.data.frame = T)
+welfare <- raw_welfare
+
+head(welfare)
+tail(welfare)
+view(welfare)
+dim(welfare)
+str(welfare)
+summary(welfare)
+
+welfare <- rename(welfare,
+                  sex = h10_g3,
+                  bitrh = h10_g4,
+                  marriage = h10_g10,
+                  religion = h10_g11,
+                  income = p1002_8aq1,
+                  code_job = h10_eco9,
+                  code_region = h10_reg7)
+class(welfare$sex)
+
+table(welfare$sex)
+
+welfare$sex <- ifelse(welfare$sex == 9, NA, welfare$sex)
+
+table(is.na(welfare$sex))
+
+welfare$sex <- ifelse(welfare$sex ==1, "male", "female")
+table(welfare$sex)
+
+#직업별 월급 차이 - "어떤 직업이 월급을 가장 많이 받을까?"
+
+###작성자 : 윤희철
+
+
+
+
+## - 분석절차 -
+
+###변수 검토 및 전처리        ->        변수간 관계 분석
+
+####code값 확인
+class(welfare$code_job)
+table(welfare$code_job)
+
+####현재는 직업명이 아닌 직업분류code로 표기
+#### -> 직업분류코드를 이용해 직업 명칭 변수 생성 !
+
+###전처리과정
+
+####doit R깃허브에서 파일 다운로드
+
+[koweps_codebook.xlsx](https://github.com/youngwoos/Doit_R/blob/master/Data/Koweps_Codebook.xlsx) 
+####해당 파일의 '직종코드'시트에 직업분류코드가 있습니다.
+
+####엑셀패키지 로드
+library(readxl)
+list_job <- read_excel("koweps_codebook.xlsx", col_names = T, sheet = 2)
+head(list_job)
+dim(list_job)
+
+
+
+####left_join으로 job 변수를 welfare에 결합해 직업분류코드에 맞는 직업명이 붙도록 수행!
+####(주의 : join할 때는 항상 key값을 무엇으로 둘지 인지해야됨 R에선 'id')
+welfare <- left_join(welfare, list_job, id = "code_job")
+
+####join 후 잘 결합이 되었는지 data 확인
+####(data 관리자는 항상 확인하는 습관이 매우 중요합니다)
+
+welfare %>% 
+        filter(!is.na(code_job)) %>% 
+        select(code_job, job) %>% 
+        head(10)
+
+####직업별 월급 평균표 만들기
+
+####직업이 없거나 월급정보가 없으면 대상이 아니므로 제외하는 로직을 구현합니다.
+job_income <- welfare %>% 
+    filter(!is.na(job) & !is.na(income)) %>% 
+    group_by(job) %>% 
+    summarise(mean_income = mean(income))
+
+
+####정리된 월급 평균표를 가지고 내림차순 정렬 후 상위 10개 추출!
+top10 <- job_income %>% 
+         arrange(desc(mean_income)) %>%
+         head(10)
+
+
+####추출된 상위10개를 대상으로 그래프화
+ggplot(data = top10, aes(x = reorder(job, mean_income), y = mean_income)) +
+geom_col() +
+coord_flip()
+
+
+####ver.반대 - 하위 10위(집에서 복습해보세요)
+bottom10 <- job_income %>% 
+            arrange(mean_income) %>% 
+            head(10)
+            
+bottom10
+
+ggplot(data = bottom10, aes(x = reorder(job, -mean_income),
+                            y = mean_income)) +
+       geom_col() +
+       coord_flip() +
+       ylim(0, 850)
